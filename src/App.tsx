@@ -48,6 +48,7 @@ function PostCard({ post, saved, onSave, onCopy }: { post: Post; saved: boolean;
 }
 
 export default function App() {
+  const [isPhone, setIsPhone] = useState(() => matchMedia('(max-width: 720px)').matches);
   const [saved, setSaved] = useState(loadSaved);
   const [savedOnly, setSavedOnly] = useState(location.hash === '#saved');
   const [query, setQuery] = useState('');
@@ -60,6 +61,14 @@ export default function App() {
   const feedHeadingRef = useRef<HTMLHeadingElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const results = selectPosts(query, topic, sort, savedOnly, saved);
+
+  useEffect(() => {
+    // Keep the visual and keyboard reading order aligned at the CSS breakpoint.
+    const media = matchMedia('(max-width: 720px)');
+    const onChange = () => setIsPhone(media.matches);
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
 
   useEffect(() => {
     const onHashChange = () => {
@@ -106,6 +115,10 @@ export default function App() {
     if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
   }
   const authorCount = new Set(posts.map(post => post.handle)).size;
+  const hero = <section className="hero" aria-labelledby="hero-heading">
+    <div className="hero-art" aria-hidden="true"><img src="./assets/pepe-squad.webp" width="1200" height="800" alt="" fetchPriority="high" /></div>
+    <div className="hero-copy"><h1 id="hero-heading">Tweets from the<br /><span>AI pond.</span></h1><p>A collection of posts about Identity.md and its AI-powered Pepe community.</p><a className="button button-primary" href="#feed" onClick={() => { if (location.hash === '#feed') feedHeadingRef.current?.focus(); }}>Explore the feed <Icon name="arrow" size={18} /></a></div>
+  </section>;
 
   return <>
     <a className="skip-link" href="#main">Skip to content</a>
@@ -119,7 +132,6 @@ export default function App() {
           <button className="nav-item about-nav" type="button" onClick={openAbout}><Icon name="info" /><span>About the feed</span></button>
         </nav>
         <div className="sidebar-bottom">
-          <div className="pond-stamp"><Icon name="leaf" size={24} /><p>A little less noise.<br />A little more <strong>signal.</strong></p><div className="stamp-line" /><span>Human curiosity.<br />Artificial intelligence.<br />Very real Pepes.</span></div>
           <a className="ecosystem-link" href="https://imd.fun" target="_blank" rel="noopener noreferrer">Explore Identity.md<Icon name="external" size={15} /></a>
           <div className="sidebar-footnote"><span className="tiny-frog" aria-hidden="true">◡</span> Made for the pond.</div>
         </div>
@@ -128,15 +140,11 @@ export default function App() {
       <main id="main" className="main-content" tabIndex={-1}>
         <header className="topbar"><span>Identity.md <span className="breadcrumb-slash">/</span> <strong>Community feed</strong></span><button type="button" className="edition" onClick={openAbout}><span className="edition-dot" /> Curated edition <span className="edition-date">· {EDITION_DATE}</span><Icon name="info" size={14} /></button></header>
 
-        <section className="hero" aria-labelledby="hero-heading">
-          <div className="hero-art" aria-hidden="true"><img src="./assets/pepe-squad.webp" width="1200" height="800" alt="" fetchPriority="high" /></div>
-          <div className="hero-copy"><span className="hero-note"><span className="small-line" /> Welcome to the pond</span><h1 id="hero-heading">Good signal.<br /><span>Great company.</span></h1><p>Top tweets from the Identity.md community.<br className="desktop-break" /> Builders, big ideas, and Pepes armed with AI.</p><a className="button button-primary" href="#feed" onClick={() => { if (location.hash === '#feed') feedHeadingRef.current?.focus(); }}>Explore the feed <Icon name="arrow" size={18} /></a></div>
-          <div className="hero-caption"><span className="status-square" /> Intelligence, but make it amphibious.</div>
-        </section>
+        {!isPhone && hero}
 
         <div className="content-grid">
           <section className="feed-section" aria-labelledby="feed-heading" id={savedOnly ? 'saved' : 'feed'}>
-            <div className="section-heading"><div><h2 id="feed-heading" ref={feedHeadingRef} tabIndex={-1}>{savedOnly ? 'Saved posts' : 'From around the pond'}<span className="heading-dot">.</span></h2><p>{savedOnly ? 'The good stuff, kept close. Saved on this browser.' : 'Worth a read. Worth a thought. Worth a bookmark.'}</p></div><Icon name={savedOnly ? 'bookmark' : 'feed'} size={24} /></div>
+            <div className="section-heading"><div><h2 id="feed-heading" ref={feedHeadingRef} tabIndex={-1}>{savedOnly ? 'Saved posts' : 'From around the pond'}<span className="heading-dot">.</span></h2>{savedOnly && <p>Saved in this browser.</p>}</div><Icon name={savedOnly ? 'bookmark' : 'feed'} size={24} /></div>
             <div className="feed-controls">
               <label className="search-label" htmlFor="search">Search the feed</label>
               <div className="search-field"><Icon name="search" size={19} /><input ref={searchRef} id="search" name="query" type="search" autoComplete="off" placeholder="Try “swarm” or an @handle" value={query} onChange={event => { setQuery(event.target.value); setLimit(4); }} />{query && <button type="button" className="icon-button" aria-label="Clear search" onClick={() => { setQuery(''); searchRef.current?.focus(); }}><Icon name="close" size={16} /></button>}</div>
@@ -152,13 +160,14 @@ export default function App() {
           </section>
 
           <aside className="context-column" aria-label="About this edition">
-            <section className="pond-card"><div className="aside-heading"><h2>The pond, at a glance</h2><Icon name="leaf" size={18} /></div><p>Small collection. Big ideas.</p><div className="edition-stats"><div><strong>{String(posts.length).padStart(2, '0')}</strong><span>Curated posts</span></div><div><strong>{String(authorCount).padStart(2, '0')}</strong><span>Community voices</span></div></div><div className="avatar-stack" aria-hidden="true">{posts.filter((post, index, all) => all.findIndex(item => item.handle === post.handle) === index).map(post => <Avatar key={post.handle} post={post} small />)}<span>One shared curiosity.</span></div></section>
+            <section className="pond-card"><div className="aside-heading"><h2>The pond, at a glance</h2><Icon name="leaf" size={18} /></div><div className="edition-stats"><div><strong>{String(posts.length).padStart(2, '0')}</strong><span>Curated posts</span></div><div><strong>{String(authorCount).padStart(2, '0')}</strong><span>Community voices</span></div></div><div className="avatar-stack" aria-hidden="true">{posts.filter((post, index, all) => all.findIndex(item => item.handle === post.handle) === index).map(post => <Avatar key={post.handle} post={post} small />)}<span>One shared curiosity.</span></div></section>
             <section className="topics-card"><h2>In the conversation</h2><p>Find your corner of the ecosystem.</p><div>{topics.filter((item): item is Exclude<Topic, 'All posts'> => item !== 'All posts').map(item => <button type="button" className={`topic-row ${topic === item ? 'topic-active' : ''}`} key={item} onClick={() => { chooseTopic(item); feedHeadingRef.current?.scrollIntoView({ block: 'start' }); }}><span className="topic-icon"><Icon name={topicIcons[item]} size={19} /></span><span><strong>{item}</strong><span>{item === 'Building' ? 'Agents, tools & things shipped' : item === 'Ecosystem' ? 'Projects taking shape' : 'The people behind the Pepes'}</span></span><span className="topic-count">{posts.filter(post => post.topic === item).length}</span><Icon name="chevron" size={14} /></button>)}</div></section>
             <section className="field-note"><span className="note-icon"><Icon name="code" size={22} /></span><h2>Not just a profile picture.</h2><p>A community of curious humans and AI-powered Pepes, building something together.</p><a href="https://imd.fun" target="_blank" rel="noopener noreferrer">Meet Identity.md<Icon name="arrow" size={17} /></a><div className="terminal-line" aria-hidden="true"><span>&gt;_</span> curiosity.exe is running<span className="terminal-cursor" /></div></section>
             <div className="side-links"><button type="button" onClick={openAbout}>Curation & sources</button><span>·</span><a href="https://x.com/search?q=%22identity.md%22%20OR%20%24IMD&f=top" target="_blank" rel="noopener noreferrer">More on X<Icon name="external" size={12} /></a></div>
             <p className="community-note">An independent community project.<br />A good feed starts with good people.</p>
           </aside>
         </div>
+        {isPhone && hero}
         <footer className="page-footer"><span><img src="./favicon.svg" width="20" height="20" alt="" /> the pond <span className="footer-dash">/</span> Stay curious. Stay a little green.</span><span>Identity.md community · 2026</span></footer>
       </main>
     </div>

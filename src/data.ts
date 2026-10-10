@@ -89,7 +89,7 @@ export function selectPosts(query: string, topic: Topic, sort: Sort, savedOnly: 
   const results = posts.filter(post =>
     (topic === 'All posts' || post.topic === topic) &&
     (!savedOnly || saved.includes(post.id)) &&
-    `${post.author} ${post.handle} ${post.title} ${post.summary} ${post.topic} identity.md $imd`.toLocaleLowerCase().includes(normalized),
+    `${post.author} @${post.handle} ${post.title} ${post.summary} ${post.topic} identity.md $imd`.toLocaleLowerCase().includes(normalized),
   );
   if (sort === 'latest') results.sort((a, b) => b.date.localeCompare(a.date) || (BigInt(a.id) < BigInt(b.id) ? 1 : -1));
   if (sort === 'likes') results.sort((a, b) => (b.likes ?? -1) - (a.likes ?? -1));

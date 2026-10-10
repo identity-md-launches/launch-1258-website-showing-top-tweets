@@ -11,7 +11,8 @@ const browser = await chromium.launch({
   headless: true,
   ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}),
 });
-const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce', permissions: ['clipboard-read', 'clipboard-write'] });
+report.browser = { name: 'Chromium', version: browser.version() };
+const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce', permissions: ['clipboard-read', 'clipboard-write'] });
 const page = await context.newPage();
 page.on('pageerror', error => report.errors.push(error.message));
 page.on('console', message => { if (message.type() === 'error') report.errors.push(message.text()); });
@@ -20,9 +21,12 @@ page.on('response', response => { if (response.status() >= 400) report.failedReq
 const cards = () => page.locator('.post-card');
 async function check(name, fn) {
   try { await fn(); report.checks.push({ name, result: 'PASS' }); console.log(`PASS ${name}`); }
-  catch (error) { report.checks.push({ name, result: 'FAIL', error: error.message }); console.error(`FAIL ${name}: ${error.message}`); }
+  catch (error) { report.checks.push({ name, result: 'FAIL', error: error.stack }); console.error(`FAIL ${name}: ${error.stack}`); }
 }
 async function home() { await page.goto(url); await page.evaluate(() => document.fonts.ready); }
+async function waitForView(savedOnly, target = page) {
+  await target.waitForFunction(saved => document.querySelector('#feed-heading')?.textContent === (saved ? 'Saved posts.' : 'From around the pond.') && document.activeElement?.id === 'feed-heading', savedOnly);
+}
 function contrast(foreground, background) {
   function luminance(color) {
     const components = color.match(/[\d.]+/g).slice(0, 3).map(Number).map(n => n / 255).map(n => n <= .04045 ? n / 12.92 : ((n + .055) / 1.055) ** 2.4);
@@ -38,6 +42,10 @@ try {
     assert.equal(await page.title(), 'The Pond — Top Identity.md tweets');
     assert.equal(await page.locator('h1').count(), 1);
     for (const selector of ['meta[name="description"]', 'meta[property="og:title"]', 'meta[property="og:image"]']) assert.ok(await page.locator(selector).getAttribute('content'));
+    const ogImage = await page.locator('meta[property="og:image"]').getAttribute('content');
+    const html = await (await page.request.get(url)).text();
+    assert.equal(html.match(/<meta property="og:image" content="([^"]+)"/)[1].replaceAll('&quot;', '"').replaceAll('&amp;', '&'), ogImage, 'Share metadata must exist in the served HTML');
+    report.metadata = { ogImage, independentlyParseable: URL.canParse(ogImage), scope: 'Metadata presence and local image availability; final-host social unfurling is not certified.' };
     const sourceUrls = await page.locator('script[src],link[href],img[src]').evaluateAll(elements => elements.map(element => element.getAttribute('src') || element.getAttribute('href')));
     assert.ok(sourceUrls.every(path => !path.startsWith('/')), 'All runtime asset paths must be relative');
     for (const asset of ['favicon.svg', 'assets/pepe-squad.webp', 'assets/pond-social.jpg', 'assets/space-grotesk-latin.woff2']) assert.equal((await page.request.get(url + asset)).status(), 200);
@@ -63,6 +71,23 @@ try {
     await page.getByRole('button', { name: 'All posts', exact: true }).click();
     assert.equal(await cards().count(), 3);
   });
+  await check('Displayed @handles match bare handles, including case, whitespace and partial searches', async () => {
+    const search = page.getByRole('searchbox');
+    for (const [handle, expected] of [['taylor_', 1], ['nftgothsa', 3], ['surfcoderepeat', 2]]) {
+      await search.fill(handle);
+      const ids = await cards().evaluateAll(nodes => nodes.map(node => node.dataset.postId));
+      assert.equal(ids.length, expected);
+      for (const query of [`@${handle}`, `  @${handle.toUpperCase()}  `, `@${handle.slice(0, -1)}`]) {
+        await search.fill(query);
+        assert.deepEqual(await cards().evaluateAll(nodes => nodes.map(node => node.dataset.postId)), ids, query);
+      }
+    }
+    await search.fill('@nftgothsa');
+    await page.getByRole('button', { name: 'Ecosystem', exact: true }).click();
+    assert.equal(await cards().count(), 1);
+    assert.equal(await cards().first().locator('.topic-badge').textContent(), 'Ecosystem');
+    await page.getByRole('button', { name: 'All posts', exact: true }).click();
+  });
   await check('No-result state gives a working filter reset', async () => {
     await page.getByRole('searchbox').fill('a-query-with-no-matches');
     assert.equal(await cards().count(), 0);
@@ -85,10 +110,19 @@ try {
     await cards().first().getByRole('button', { name: /^Save / }).click();
     assert.equal(await cards().first().locator('.save-button').getAttribute('aria-pressed'), 'true');
     await page.getByRole('link', { name: /^Saved posts/ }).click();
+    await waitForView(true);
     assert.equal(await cards().count(), 1);
     await page.reload();
     assert.equal(await cards().count(), 1);
     assert.equal(await page.locator('#feed-heading').textContent(), 'Saved posts.');
+  });
+  await check('@handle search preserves the saved-post predicate', async () => {
+    await page.getByRole('searchbox').fill('@taylor_');
+    assert.equal(await cards().count(), 1);
+    await page.getByRole('searchbox').fill('@nftgothsa');
+    assert.equal(await cards().count(), 0);
+    await page.getByRole('searchbox').fill('');
+    assert.equal(await cards().count(), 1);
   });
   await check('Unsave the final saved post and recover from the empty state', async () => {
     await cards().first().getByRole('button', { name: /^Unsave / }).click();
@@ -96,12 +130,15 @@ try {
     assert.ok(await page.getByText('Keep a little signal.').isVisible());
     assert.equal(await page.locator('#feed-heading').evaluate(node => node === document.activeElement), true);
     await page.locator('.empty-state').getByRole('link', { name: 'Explore the feed' }).click();
+    await waitForView(false);
     assert.equal(await cards().count(), 4);
   });
   await check('Hash history restores Saved and Feed views', async () => {
     await page.goBack();
+    await waitForView(true);
     assert.ok(await page.getByText('Keep a little signal.').isVisible());
     await page.goForward();
+    await waitForView(false);
     assert.equal(await cards().count(), 4);
   });
   await check('Copy-link action writes the original post URL', async () => {
@@ -141,6 +178,7 @@ try {
     await page.keyboard.press('Tab');
     assert.equal(await page.getByRole('link', { name: 'Skip to content' }).evaluate(node => node === document.activeElement), true);
     await page.keyboard.press('Enter');
+    await waitForView(false);
     await page.getByRole('searchbox').focus();
     await page.keyboard.type('swarm');
     assert.ok(await cards().count() > 0);
@@ -161,6 +199,7 @@ try {
     await denied.locator('.save-button').first().click();
     assert.ok(await denied.getByRole('alert').getByText(/Your browser blocked storage/).isVisible());
     await denied.getByRole('link', { name: /^Saved posts/ }).click();
+    await waitForView(true, denied);
     assert.equal(await denied.locator('.post-card').count(), 1);
     await isolated.close();
   });
@@ -181,16 +220,43 @@ try {
     assert.ok(await denied.locator('.toast-visible').getByText(/Use Read on X/).isVisible());
     await isolated.close();
   });
+  await check('Phone reading and keyboard order follow the feed across the 720px breakpoint', async () => {
+    await home();
+    await page.getByRole('searchbox').fill('@nftgothsa');
+    const ids = await cards().evaluateAll(nodes => nodes.map(node => node.dataset.postId));
+    for (const width of [390, 721, 720, 1440, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.waitForFunction(phone => Boolean(document.querySelector('.content-grid').compareDocumentPosition(document.querySelector('.hero')) & Node.DOCUMENT_POSITION_FOLLOWING) === phone, width <= 720);
+      assert.equal(await page.locator('h1').count(), 1);
+      const heroAfterFeed = await page.evaluate(() => Boolean(document.querySelector('.content-grid').compareDocumentPosition(document.querySelector('.hero')) & Node.DOCUMENT_POSITION_FOLLOWING));
+      assert.equal(heroAfterFeed, width <= 720);
+      assert.equal(await page.getByRole('searchbox').inputValue(), '@nftgothsa');
+      assert.deepEqual(await cards().evaluateAll(nodes => nodes.map(node => node.dataset.postId)), ids);
+      if (width <= 720) {
+        await page.locator('.edition').focus();
+        await page.keyboard.press('Tab');
+        assert.equal(await page.getByRole('searchbox').evaluate(node => node === document.activeElement), true);
+      }
+    }
+  });
   for (const width of [320, 390, 720, 900, 1100, 1440]) {
     await check(`Rendered layout at ${width}px, no horizontal overflow`, async () => {
-      await page.setViewportSize({ width, height: width < 721 ? 844 : 1000 });
+      await page.setViewportSize({ width, height: width < 721 ? 844 : 900 });
       await home();
-      const metrics = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, heroActionBottom: document.querySelector('.hero .button').getBoundingClientRect().bottom, height: innerHeight }));
+      const metrics = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, heroActionBottom: document.querySelector('.hero .button').getBoundingClientRect().bottom, height: innerHeight, hash: location.hash, scrollY, firstTitleTop: document.querySelector('.post-copy h3').getBoundingClientRect().top, firstSummaryBottom: document.querySelector('.post-copy p').getBoundingClientRect().bottom, firstReadBottom: document.querySelector('.read-post').getBoundingClientRect().bottom }));
       report.viewports.push({ width, ...metrics });
       assert.ok(metrics.document <= width, `Document overflows by ${metrics.document - width}px`);
-      assert.ok(metrics.heroActionBottom < metrics.height, 'Primary action must be in the first screen');
+      if (width > 720) assert.ok(metrics.heroActionBottom < metrics.height, 'Desktop hero action must be in the first screen');
+      if (width === 390) {
+        assert.equal(metrics.hash, '');
+        assert.equal(metrics.scrollY, 0);
+        assert.ok(metrics.firstTitleTop > 0 && metrics.firstSummaryBottom < metrics.height, 'First tweet must be readable without scrolling');
+        assert.ok(metrics.firstReadBottom <= metrics.height, 'Read on X must fit fully in the first phone screen');
+        assert.equal(await page.locator('.read-post').first().evaluate(node => { const r = node.getBoundingClientRect(); return node.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); }), true);
+      }
       if ([320, 390, 900, 1440].includes(width)) await page.screenshot({ path: `artifacts/viewport-${width}.jpg`, type: 'jpeg', quality: 85, fullPage: true });
       if (width === 390) await page.screenshot({ path: 'artifacts/mobile-first-screen.jpg', type: 'jpeg', quality: 90 });
+      if (width === 1440) await page.screenshot({ path: 'artifacts/desktop-first-screen.jpg', type: 'jpeg', quality: 85 });
       if ([390, 1440].includes(width)) {
         const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
         report.accessibility.push({ width, violations: results.violations.map(item => ({ id: item.id, impact: item.impact, description: item.description, nodes: item.nodes.map(node => node.target) })), incomplete: results.incomplete.map(item => ({ id: item.id, nodes: item.nodes.map(node => node.target) })) });
@@ -229,7 +295,7 @@ try {
       ['Active navigation', '.nav-item.active', '.nav-item.active', 4.5],
       ['Selected filter', '.filter-chip.selected', '.filter-chip.selected', 4.5],
       ['Topic badge', '.topic-badge', '.topic-badge', 4.5],
-      ['Page muted text', '.section-heading p', 'body', 4.5],
+      ['Page muted text', '.search-label', 'body', 4.5],
     ]) {
       const pair = await page.evaluate(({ selector, backgroundSelector }) => {
         let backgroundNode = document.querySelector(backgroundSelector);

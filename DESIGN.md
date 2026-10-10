@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Pond is a reading dashboard for the Identity.md community. Its visual direction is dark green, with Pepes equipped with AI terminals. A locally bundled comic illustration supplies the personality; the working feed uses quiet surfaces, consistent edges, and clear controls. The desktop composition is a navigation sidebar, a main reading column, and a supporting context column. Mobile prioritizes navigation, the product description and action, then search and the feed.
+The Pond is a reading dashboard for the Identity.md community. Its visual direction is dark green, with Pepes equipped with AI terminals. A locally bundled comic illustration supplies the personality; the working feed uses quiet surfaces, consistent edges, and clear controls. The desktop composition is a navigation sidebar, a main reading column, and a supporting context column. Mobile prioritizes the community brand, edition disclosure, search, filters, and readable posts. The illustrated introduction follows the feed and context column, before the footer.
 
 The system is implemented in `src/styles.css`. Layout and reusable patterns are in `src/App.tsx`; icons are in `src/Icon.tsx`. This document describes the final source, not a proposed redesign.
 
@@ -57,14 +57,14 @@ The page max-width is 1600px. The base grid allocates 230px to navigation, with 
 | --- | --- |
 | ≥ 1440px | Main insets 48px; context 310px; gutter 32px; hero minimum 350px |
 | ≤ 1190px | Sidebar 200px; main insets 24px; context 250px; tighter card insets |
-| ≤ 1030px | Context moves below feed; hero title becomes 28px; decorative caption is hidden |
+| ≤ 1030px | Context moves below feed; hero title becomes 28px |
 | 721–1030px | Navigation becomes an 80px icon rail; text names remain available to assistive technology |
-| ≤ 720px | Sidebar becomes top navigation; no sticky mobile chrome; 20px main insets; one content column; 16px inputs and post body; 44px action targets |
-| ≤ 380px | Insets become 16px; filters and card footers wrap; nonessential small caption and X glyph are omitted |
+| ≤ 720px | Sidebar becomes top navigation; no sticky mobile chrome; 20px main insets; one content column; feed before the hero; 16px inputs and post body; 44px action targets |
+| ≤ 380px | Insets become 16px; filters and card footers wrap; the editor-pick supporting caption is omitted (the X glyph is already hidden at 720px) |
 
-The main view uses normal document scrolling. The desktop sidebar is sticky. Text containers have natural height; grid children use `min-width: 0`. Mobile bottom spacing and toasts account for the safe area. Hash navigation keeps the site compatible with static hosting. The feed heading has a 24px scroll margin and receives focus on view changes.
+The main view uses normal document scrolling. The desktop sidebar is sticky, with utility links anchored at the bottom by `margin-block-start: auto`; the removed promotional stamp reserves no height. Below 721px, `App` uses a matching `matchMedia` listener to move the single hero in the DOM after `.content-grid`, preserving visual and keyboard order during resize. Mobile `.content-grid` has 16px top padding, the feed heading has a 14px bottom margin, and the hero has a 24px top margin. Text containers have natural height; grid children use `min-width: 0`. Mobile bottom spacing and toasts account for the safe area. Hash navigation keeps the site compatible with static hosting. The feed heading has a 24px scroll margin and receives focus on view changes.
 
-Actual production rendering was tested at 320, 390, 720, 900, 1100, and 1440px without document overflow. The 390px hero action ends approximately 457px down the 844px first screen. Text enlargement to 200% was also tested at 900px. Browser-native zoom, localization, and physical devices were not tested.
+Actual production rendering was tested at 320, 390, 720, 900, 1100, and 1440px without document overflow. At 390 × 844 with an empty hash and no scrolling, the first post title starts at 575.8px, its full summary ends at 710.8px, and its 44px Read on X action ends at 816.8px. At 320px, content reflows without horizontal overflow but the first reading action requires scrolling. Text enlargement to 200% was also tested at 900px. Browser-native zoom, localization, and physical devices were not tested.
 
 ## Elevation & Depth
 
@@ -81,9 +81,10 @@ Shared radii are 6px (`--radius-small`, compact controls), 8px (`--radius-contro
 | `PostCard`, `src/App.tsx:19` | A real post with an editorial title/summary; `post`, `saved`, `onSave`, `onCopy` props. Optional featured header. Missing counts are omitted. Read link is native, save is a pressed-state button. |
 | `Avatar`, `src/App.tsx:15` | Local initials with four decorative color variants; optional `small`. Hidden from assistive technology because the author name is adjacent. |
 | `Icon`, `src/Icon.tsx` | `name`, optional `size` and `style`; one SVG set, currentColor, 1.6px strokes. Decorative SVGs are hidden from assistive technology. |
+| `.hero`, `src/App.tsx` | One five-word product heading, “Tweets from the AI pond.”, with mint emphasis on “AI pond.” and one descriptive sentence. The existing Pepe artwork remains local. On phones, the hero follows the content; on desktop, it precedes it. |
 | `.button`, `.button-primary` | Mint filled action, minimum 44px. Prefer one primary action in each task area; other actions are neutral. |
 | `.nav-item` | Native hash links with `aria-current`; active border plus color. Mobile navigation uses an underline, not color alone. |
-| `.search-field`, `.filter-chip`, `.sort-control` | Persistent visible search label, native search input/select, topic button group with pressed state. Changes are immediate; the stable result count announces updates. |
+| `.search-field`, `.filter-chip`, `.sort-control` | Persistent visible search label, native search input/select, topic button group with pressed state. Changes are immediate; the stable result count announces updates. Search matches both bare and @-prefixed handles and combines with topic and saved filters. |
 | `.icon-button`, `.is-saved` | 40px desktop and 44px mobile; every action has a specific accessible name. Saved state fills the bookmark and changes its pressed state. |
 | `.empty-state` | Explains no saved posts or no matching results and supplies a working recovery action. |
 | `.storage-warning`, `.toast-visible` | Storage errors persist next to the feed. Informational/copy messages are explicitly dismissible; a separate stable polite live region announces them. |
