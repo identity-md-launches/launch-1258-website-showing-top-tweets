@@ -1,0 +1,16 @@
+# Explicit path budget: this file <= 512 bytes. See README.md.
+# Keep generated dependencies and caches out at every nesting level.
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+.vite/
+.cache/
+.playwright-mcp/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+*.tgz
+/test/scratch/
+# dist/ is a required deliverable and is deliberately NOT ignored.
